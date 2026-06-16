@@ -89,6 +89,18 @@ fun CRMMainApp() {
 
     val context = LocalContext.current
 
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { viewModel.importCsv(context, it) }
+    }
+
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        uri?.let { viewModel.exportCsv(context, it) }
+    }
+
     // Observe alert messages and make toast info
     LaunchedEffect(alertMessage) {
         alertMessage?.let {
@@ -103,7 +115,10 @@ fun CRMMainApp() {
             .testTag("main_app_scaffold"),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            CRMTopBar()
+            CRMTopBar(
+                onImportClick = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
+                onExportClick = { exportLauncher.launch("stones_crm_leads.csv") }
+            )
         },
         bottomBar = {
             CRMBottomNav(
@@ -159,6 +174,12 @@ fun CRMMainApp() {
                     leads = leads,
                     onLeadClick = { viewModel.selectLead(it) }
                 )
+                2 -> DataEnrichmentMatrix(
+                    leads = leads
+                )
+                3 -> AnalyticsDashboard(
+                    leads = leads
+                )
             }
 
             // Lead Details modal overlay / dialog
@@ -203,7 +224,10 @@ fun CRMMainApp() {
 }
 
 @Composable
-fun CRMTopBar() {
+fun CRMTopBar(
+    onImportClick: () -> Unit = {},
+    onExportClick: () -> Unit = {}
+) {
     Surface(
         color = SlateDarkBg,
         shadowElevation = 4.dp
@@ -251,9 +275,20 @@ fun CRMTopBar() {
                 }
 
                 // Global Actions Box
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { /* Export CSV action */ },
+                        onClick = onImportClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = SlateCardBg),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, SlateCardBg.copy(alpha = 0.5f)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text("📤 Import CSV", color = Offwhite, fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = onExportClick,
                         colors = ButtonDefaults.buttonColors(containerColor = SlateCardBg),
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, SlateCardBg.copy(alpha = 0.5f)),
@@ -302,6 +337,34 @@ fun CRMBottomNav(activeIndex: Int, onTabSelected: (Int) -> Unit) {
                 unselectedTextColor = CoolGreyText
             ),
             modifier = Modifier.testTag("nav_ai_search_tab")
+        )
+        NavigationBarItem(
+            selected = activeIndex == 2,
+            onClick = { onTabSelected(2) },
+            icon = { Icon(imageVector = Icons.Default.Menu, contentDescription = "Data Matrix") },
+            label = { Text("Enrichment Matrix", fontSize = 11.sp) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = SlateDarkBg,
+                selectedTextColor = EmeralPrimary,
+                indicatorColor = EmeralPrimary,
+                unselectedIconColor = CoolGreyText,
+                unselectedTextColor = CoolGreyText
+            ),
+            modifier = Modifier.testTag("nav_matrix_tab")
+        )
+        NavigationBarItem(
+            selected = activeIndex == 3,
+            onClick = { onTabSelected(3) },
+            icon = { Icon(imageVector = Icons.Default.Info, contentDescription = "Analytics") },
+            label = { Text("Analytics", fontSize = 11.sp) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = SlateDarkBg,
+                selectedTextColor = EmeralPrimary,
+                indicatorColor = EmeralPrimary,
+                unselectedIconColor = CoolGreyText,
+                unselectedTextColor = CoolGreyText
+            ),
+            modifier = Modifier.testTag("nav_analytics_tab")
         )
     }
 }
@@ -2125,7 +2188,124 @@ fun AIChatAssistantDialog(
     }
 }
 
-// --- UTILITIES / STATS MODEL GRAPHICS GENERATION ---
+// --- TAB 3: Data Enrichment Matrix ---
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun DataEnrichmentMatrix(leads: List<Lead>) {
+    var sortColumn by remember { mutableStateOf("Name") }
+    var sortAscending by remember { mutableStateOf(true) }
+
+    val sortedLeads = remember(leads, sortColumn, sortAscending) {
+        val filtered = leads.filter { it.enrichedIndustry.isNotEmpty() || it.enrichedSize.isNotEmpty() || it.enrichedPainPoints.isNotEmpty() || it.name.isNotEmpty() }
+        when (sortColumn) {
+            "Name" -> if (sortAscending) filtered.sortedBy { it.name.lowercase() } else filtered.sortedByDescending { it.name.lowercase() }
+            "Industry" -> if (sortAscending) filtered.sortedBy { it.enrichedIndustry.lowercase() } else filtered.sortedByDescending { it.enrichedIndustry.lowercase() }
+            "Valuation" -> if (sortAscending) filtered.sortedBy { it.enrichedSize.lowercase() } else filtered.sortedByDescending { it.enrichedSize.lowercase() }
+            "Confidence" -> if (sortAscending) filtered.sortedBy { it.score } else filtered.sortedByDescending { it.score }
+            else -> filtered
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SlateDarkBg)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Data Enrichment Matrix",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Offwhite,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Text(
+                text = "Interactive, sortable table. Press & hold confidence scores for tooltips.",
+                fontSize = 12.sp,
+                color = CoolGreyText,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+        
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SlateCardBg)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SortableHeaderCell(title = "Name", currentSortColumn = sortColumn, isAscending = sortAscending, onClick = {
+                if (sortColumn == "Name") sortAscending = !sortAscending else { sortColumn = "Name"; sortAscending = true }
+            }, modifier = Modifier.weight(1.5f))
+            SortableHeaderCell(title = "Industry", currentSortColumn = sortColumn, isAscending = sortAscending, onClick = {
+                if (sortColumn == "Industry") sortAscending = !sortAscending else { sortColumn = "Industry"; sortAscending = true }
+            }, modifier = Modifier.weight(1.5f))
+            SortableHeaderCell(title = "Valuation", currentSortColumn = sortColumn, isAscending = sortAscending, onClick = {
+                if (sortColumn == "Valuation") sortAscending = !sortAscending else { sortColumn = "Valuation"; sortAscending = true }
+            }, modifier = Modifier.weight(1.5f))
+            SortableHeaderCell(title = "Confidence", currentSortColumn = sortColumn, isAscending = sortAscending, onClick = {
+                if (sortColumn == "Confidence") sortAscending = !sortAscending else { sortColumn = "Confidence"; sortAscending = true }
+            }, modifier = Modifier.weight(1f))
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(sortedLeads, key = { it.id }) { lead ->
+                MatrixRowItem(lead = lead)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun MatrixRowItem(lead: Lead) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(SlateCardBg)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = lead.name, color = Offwhite, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
+        Text(text = lead.enrichedIndustry.ifEmpty { "N/A" }, color = CoolGreyText, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
+        Text(text = lead.enrichedSize.ifEmpty { "Unknown" }, color = CoolGreyText, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
+        
+        TooltipBox(
+            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+            tooltip = {
+                PlainTooltip(
+                    containerColor = CharcoalBase,
+                    contentColor = Offwhite
+                ) {
+                    Text("Score based on Lead Valuation and Activity", fontSize = 11.sp)
+                }
+            },
+            state = rememberTooltipState()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                val scoreColor = when {
+                    lead.score >= 80 -> EmeralPrimary
+                    lead.score >= 50 -> Color(0xFFFBBF24)
+                    else -> Color(0xFFFB7185)
+                }
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(scoreColor)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "${lead.score}%", color = Offwhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
 data class StatusTheme(val label: String, val color: Color)
 
 fun getStatusTheme(status: String): StatusTheme {
@@ -2137,5 +2317,74 @@ fun getStatusTheme(status: String): StatusTheme {
         "WON" -> StatusTheme("Won Deal", PremiumMint)              // Emerald Green
         "LOST" -> StatusTheme("Closed/Lost", CoolGreyText)         // Slate Muted
         else -> StatusTheme(status, Offwhite)
+    }
+}
+
+// --- TAB 4: Dashboard ---
+@Composable
+fun AnalyticsDashboard(leads: List<Lead>) {
+    val totalContacts = leads.size
+    val averageScore = if (leads.isNotEmpty()) leads.map { it.score }.average().toInt() else 0
+    val byVertical = leads.groupBy { it.enrichedIndustry.ifEmpty { "Unclassified" } }.mapValues { it.value.size }
+
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .background(SlateDarkBg)
+        .verticalScroll(rememberScrollState())
+        .padding(24.dp)) {
+        
+        Text("CRM Summary Analytics", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Offwhite, modifier = Modifier.padding(bottom = 24.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            DashboardMetricCard(title = "Total Contacts", value = totalContacts.toString(), modifier = Modifier.weight(1f))
+            DashboardMetricCard(title = "Avg Confidence", value = "$averageScore%", modifier = Modifier.weight(1f))
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Text("Lead Distribution by Vertical", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Offwhite, modifier = Modifier.padding(bottom = 16.dp))
+        
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(SlateCardBg)
+                .padding(16.dp)
+        ) {
+            byVertical.entries.sortedByDescending { it.value }.forEach { (vertical, count) ->
+                VerticalStatsRow(vertical = vertical, count = count, total = totalContacts.coerceAtLeast(1))
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardMetricCard(title: String, value: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier
+        .clip(RoundedCornerShape(12.dp))
+        .background(SlateCardBg)
+        .border(1.dp, SlateCardBg.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+        .padding(20.dp)) {
+        Column {
+            Text(text = title, fontSize = 14.sp, color = CoolGreyText, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = value, fontSize = 32.sp, color = EmeralPrimary, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun VerticalStatsRow(vertical: String, count: Int, total: Int) {
+    val percentage = (count.toFloat() / total)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(text = vertical, fontSize = 14.sp, color = Offwhite, fontWeight = FontWeight.Medium)
+            Text(text = "$count (${(percentage * 100).toInt()}%)", fontSize = 14.sp, color = CoolGreyText)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(SlateDarkBg)) {
+            Box(modifier = Modifier.fillMaxWidth(percentage).fillMaxHeight().background(EmeralPrimary))
+        }
     }
 }

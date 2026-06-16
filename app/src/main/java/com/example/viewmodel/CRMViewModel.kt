@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import android.content.Context
+import android.net.Uri
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
@@ -496,6 +498,77 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
             }
             _chatMessages.value = updated
             _isChatAgentTyping.value = false
+        }
+    }
+
+    fun importCsv(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream != null) {
+                    val reader = inputStream.bufferedReader()
+                    val lines = reader.readLines()
+                    if (lines.isNotEmpty()) {
+                        val regex = Regex(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*\$)")
+                        for (i in 1 until lines.size) {
+                            val row = lines[i]
+                            if (row.isBlank()) continue
+                            val columns = row.split(regex).map { it.removeSurrounding("\"").replace("\"\"", "\"") }
+                            if (columns.size >= 7) {
+                                val lead = Lead(
+                                    name = columns.getOrNull(0) ?: "",
+                                    email = columns.getOrNull(1) ?: "",
+                                    phone = columns.getOrNull(2) ?: "",
+                                    company = columns.getOrNull(3) ?: "",
+                                    title = columns.getOrNull(4) ?: "",
+                                    status = columns.getOrNull(5) ?: "NEW",
+                                    score = columns.getOrNull(6)?.toIntOrNull() ?: 50,
+                                    website = "",
+                                    notes = "Imported from CSV",
+                                    enrichedIndustry = columns.getOrNull(7) ?: "",
+                                    enrichedSize = columns.getOrNull(8) ?: "",
+                                    enrichedPainPoints = columns.getOrNull(9) ?: "",
+                                    enrichedPitch = columns.getOrNull(10) ?: "",
+                                    enrichedIcebreaker = columns.getOrNull(11) ?: ""
+                                )
+                                repository.insertLead(lead)
+                            }
+                        }
+                        _alertMessage.value = "CSV imported successfully"
+                    }
+                    reader.close()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _alertMessage.value = "Failed to import CSV: ${e.message}"
+            }
+        }
+    }
+
+    fun exportCsv(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val leads = allLeads.value
+                val outputStream = context.contentResolver.openOutputStream(uri)
+                if (outputStream != null) {
+                    val writer = outputStream.bufferedWriter()
+                    writer.write("name,email,phone,company,title,status,score,industry,size,painPoints,pitch,icebreaker\n")
+                    for (lead in leads) {
+                        val row = listOf(
+                            lead.name, lead.email, lead.phone, lead.company, lead.title,
+                            lead.status, lead.score.toString(), lead.enrichedIndustry, lead.enrichedSize,
+                            lead.enrichedPainPoints, lead.enrichedPitch, lead.enrichedIcebreaker
+                        ).joinToString(",") { "\"${it.replace("\"", "\"\"")}\"" }
+                        writer.write(row + "\n")
+                    }
+                    writer.flush()
+                    writer.close()
+                    _alertMessage.value = "CSV exported successfully"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _alertMessage.value = "Failed to export CSV: ${e.message}"
+            }
         }
     }
 }
