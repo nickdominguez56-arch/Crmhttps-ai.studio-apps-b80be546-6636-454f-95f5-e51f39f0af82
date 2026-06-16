@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Rolling Stones Lead Gen CRM</title>
+    <!-- Tailwind CSS Script CDN -->
+    <script src="https://tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #10b981; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased">
+
+    <!-- App Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 backdrop-blur-md z-40 px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                <span class="text-emerald-500">👅</span> STONES-NET CRM <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">v3.0 - Stable</span>
+            </h1>
+            <p class="text-xs text-slate-400 mt-0.5">Automated High-Net-Worth Lead Sourcing & Network Management Dashboard</p>
+        </div>
+        
+        <!-- Search and Operational Actions -->
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="relative min-w-[280px]">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">🔍</span>
+                <input id="globalSearch" type="text" oninput="handleSearch()" placeholder="Search names, titles, or companies..." class="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all">
+            </div>
+            <button onclick="exportSelectedCSV()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-lg shadow-emerald-600/10">
+                📥 Download Data Sheet (<span id="selectedCount">0</span>)
+            </button>
+        </div>
+    </header>
+
+    <!-- Workspace Panel Architecture -->
+    <div class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+        
+        <!-- Central Grid Layout -->
+        <main class="flex-1 flex flex-col overflow-hidden p-6 gap-6">
+            
+            <!-- Filterable Segments Tab Controls -->
+            <div class="flex border-b border-slate-800 gap-2 overflow-x-auto pb-px">
+                <button onclick="switchTab('all')" id="tab-all" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap border-emerald-500 text-emerald-400">
+                    All Contacts <span id="count-all" class="ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400">1000</span>
+                </button>
+                <button onclick="switchTab('Private Bookers')" id="tab-PrivateBookers" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap border-transparent text-slate-400 hover:text-slate-200">
+                    💰 Private Bookers <span id="count-PrivateBookers" class="ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400">0</span>
+                </button>
+                <button onclick="switchTab('Creative & Design')" id="tab-CreativeDesign" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap border-transparent text-slate-400 hover:text-slate-200">
+                    🎨 Creative & Design <span id="count-CreativeDesign" class="ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400">0</span>
+                </button>
+                <button onclick="switchTab('Corporate & Auto')" id="tab-CorporateAuto" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap border-transparent text-slate-400 hover:text-slate-200">
+                    🏎️ Corporate & Auto <span id="count-CorporateAuto" class="ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400">0</span>
+                </button>
+                <button onclick="switchTab('VIP Crossovers')" id="tab-VIPCrossovers" class="px-4 py-2.5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap border-transparent text-slate-400 hover:text-slate-200">
+                    🎸 VIP Crossovers <span id="count-VIPCrossovers" class="ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400">0</span>
+                </button>
+            </div>
+
+            <!-- Main CRM Lead Data Table -->
+            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-xl">
+                <div class="overflow-x-auto flex-1">
+                    <table class="w-full text-left border-collapse table-auto min-w-[950px]">
+                        <thead>
+                            <tr class="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
+                                <th class="py-3 px-4 w-12 text-center"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()" class="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0"></th>
+                                <th class="py-3 px-4 w-16">ID</th>
+                                <th class="py-3 px-4">Full Name</th>
+                                <th class="py-3 px-4">Industry Sector</th>
+                                <th class="py-3 px-4">Company/Agency</th>
+                                <th class="py-3 px-4">Corporate Title</th>
+                                <th class="py-3 px-4">Asset Metric</th>
+                                <th class="py-3 px-4 text-center">Data Route</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leadTableBody" class="divide-y divide-slate-800/50 text-sm">
+                            <!-- Populated runtime dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- App Pagination Layout Footer -->
+                <div class="bg-slate-950 px-6 py-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                    <div>Showing <span id="paginationStart">1</span> to <span id="paginationEnd">50</span> of <span id="totalVisibleCount">1000</span> active records</div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="prevPage()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 rounded-lg border border-slate-800 disabled:opacity-40 transition-all font-semibold" id="btnPrev">Previous</button>
+                        <button onclick="nextPage()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 rounded-lg border border-slate-800 disabled:opacity-40 transition-all font-semibold" id="btnNext">Next</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Side Dynamic CRM Enrichment Inspector Drawer -->
+        <aside id="detailDrawer" class="w-full lg:w-[440px] bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col overflow-y-auto hidden">
+            <div class="p-6 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-slate-900 z-10">
+                <div>
+                    <span id="drawerTabTag" class="text-[10px] uppercase font-bold tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md">Sector Mapping</span>
+                    <h2 id="drawerFullName" class="text-xl font-bold text-white mt-2">Contact Target</h2>
+                    <p id="drawerTitleCompany" class="text-xs text-slate-400 mt-0.5">Position Metrics</p>
+                </div>
+                <button onclick="closeDrawer()" class="text-slate-500 hover:text-slate-300 text-xl font-medium p-1">&times;</button>
+            </div>
+
+            <!-- Profile Parameters Data Output Grid -->
+            <div class="p-6 flex flex-col gap-6">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-3">
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Corporate Hub Contact Point</div>
+                        <div id="drawerEmail" class="text-sm font-mono text-slate-300 mt-0.5 select-all">contact@domain.com</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Commercial Footprint Valuation</div>
+                        <div id="drawerValuation" class="text-sm font-semibold text-emerald-400 mt-0.5">Valuation Field</div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Target Engagement Strategy Hook</h3>
+                    <div id="drawerIntent" class="text-sm text-slate-300 leading-relaxed bg-slate-950/40 p-3.5 border border-slate-800 rounded-xl">Context parameters description stack.</div>
+                </div>
+
+                <!-- Custom Generative Pitch Block -->
+                <div class="border-t border-slate-800/80 pt-6">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center justify-between">
+                        <span>✨ AI Generated Outreach Pitch</span>
+                        <button onclick="copyOutreach()" class="text-[11px] text-emerald-400 hover:underline capitalize font-normal">Copy Template</button>
+                    </h3>
+                </div>
+            </div>
+        </aside>
+    </div>
+</body>
+</html>
