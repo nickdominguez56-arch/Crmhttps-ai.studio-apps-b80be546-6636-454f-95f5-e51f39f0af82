@@ -8,7 +8,9 @@ import com.example.data.api.EnrichedData
 import com.example.data.api.GeminiClient
 import com.example.data.db.AppDatabase
 import com.example.data.model.Lead
+import com.example.data.model.OutreachTemplate
 import com.example.data.repository.LeadRepository
+import com.example.data.repository.TemplateRepository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -41,7 +43,10 @@ data class SearchLead(
 class CRMViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: LeadRepository
+    private val templateRepository: TemplateRepository
+    
     val allLeads: StateFlow<List<Lead>>
+    val allTemplates: StateFlow<List<OutreachTemplate>>
 
     // Selected lead for detail preview or edits
     private val _selectedLead = MutableStateFlow<Lead?>(null)
@@ -56,6 +61,10 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _generatedEmail = MutableStateFlow<String?>(null)
     val generatedEmail: StateFlow<String?> = _generatedEmail.asStateFlow()
+
+    fun setGeneratedEmail(email: String?) {
+        _generatedEmail.value = email
+    }
 
     // AI & Normal Search States
     private val _searchQuery = MutableStateFlow("")
@@ -88,7 +97,15 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val database = AppDatabase.getDatabase(application)
         repository = LeadRepository(database.leadDao())
+        templateRepository = TemplateRepository(database.templateDao())
+        
         allLeads = repository.allLeads.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+        
+        allTemplates = templateRepository.allTemplates.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
@@ -100,76 +117,130 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
             if (currentList.isEmpty()) {
                 prepopulateSampleData()
             }
+            
+            val currentTemplates = templateRepository.allTemplates.first()
+            if (currentTemplates.isEmpty()) {
+                prepopulateSampleTemplates()
+            }
+        }
+    }
+
+    private suspend fun prepopulateSampleTemplates() {
+        val sampleTemplates = listOf(
+            OutreachTemplate(
+                name = "VIP Backend Invite",
+                persona = "Music & Recording Icons",
+                angle = "Exclusive backend tour access",
+                subjectLine = "Exclusive Invitation: Stage Operations for [Band_Name]",
+                bodyContent = "Hi [Name],\n\nWe know you are a huge supporter, and we want to take you behind the scenes. Come see how the magic happens at the next show, plus secure VIP parking and green room access."
+            ),
+            OutreachTemplate(
+                name = "Hollywood Collaboration",
+                persona = "Hollywood Actors & Filmmakers",
+                angle = "Production Synergies",
+                subjectLine = "Collaboration Opportunities with [Brand_Name]",
+                bodyContent = "Hello [Name],\n\nLoved your recent work! We believe there is a unique synergy between your upcoming projects and our latest campaign. Let's discuss a secure, private collaboration."
+            ),
+            OutreachTemplate(
+                name = "Tech Leadership Intro",
+                persona = "Aerospace, Tech & Venture Capital",
+                angle = "Enterprise Strategy",
+                subjectLine = "Scaling Operations alongside your Portfolio",
+                bodyContent = "Dear [Name],\n\nScaling an enterprise requires precision. We provide robust, cloud-agnostic tools that we believe would be highly beneficial for your current ecosystem of tools."
+            ),
+            OutreachTemplate(
+                name = "Sports Management Strategy",
+                persona = "Sports Icons & Athletes",
+                angle = "Brand deals & sponsorship",
+                subjectLine = "Maximizing Sponsorship ROI Off-Season",
+                bodyContent = "Hi [Name],\n\nYour off-season is just as important as your time on the field. We specialize in managing global brand appearances and seamless travel logistics."
+            )
+        )
+        for (template in sampleTemplates) {
+            templateRepository.insertTemplate(template)
         }
     }
 
     private suspend fun prepopulateSampleData() {
-        val samples = listOf(
-            Lead(
-                name = "Elena Rostova",
-                email = "elena.rostova@vertexlabs.io",
-                phone = "+1 (555) 234-5678",
-                company = "Vertex Labs",
-                title = "Director of Product Engineering",
-                status = "NEW",
-                score = 85,
-                website = "https://vertexlabs.io",
-                notes = "Expressed high interest in scaling their generative AI pipeline but struggles with GPU orchestration latency.",
-                enrichedIndustry = "GenAI & Computing",
-                enrichedSize = "Mid-market (150-500)",
-                enrichedPainPoints = "• High GPU cloud infrastructure costs\n• Underutilized instances on AWS\n• Deployment delivery lag",
-                enrichedPitch = "Vertex Labs would highly benefit from our managed model routers, slicing pipeline latency by 35% with dynamic allocation.",
-                enrichedIcebreaker = "Elena, saw your recent talk on scalable inferences. Fantastic insights on optimizing GPU thread pools!"
-            ),
-            Lead(
-                name = "Marcus Vance",
-                email = "m.vance@stellarretail.com",
-                phone = "+1 (555) 876-5432",
-                company = "Stellar Retail",
-                title = "VP of Omnichannel Growth",
-                status = "CONTACTED",
-                score = 64,
-                website = "https://stellarretail.com",
-                notes = "Met at Retail Leaders Summit. Trying to unite point-of-sale customer data with digital checkout streams.",
-                enrichedIndustry = "E-Commerce & Retail",
-                enrichedSize = "Enterprise (5,000+)",
-                enrichedPainPoints = "• Disconnected retail registers\n• Siloed purchase triggers\n• Missed personalized checkout window",
-                enrichedPitch = "We offer Stellar Retail an instant live event broker syncing cashiers and cart state in <20ms for instant reward triggers.",
-                enrichedIcebreaker = "Marcus! Loved Stellar's expansion into downtown hubs. How is the physical-to-digital inventory bridge coming along?"
-            ),
-            Lead(
-                name = "Takahiro Sato",
-                email = "sato@orionfintech.jp",
-                phone = "+81 3-1234-5678",
-                company = "Orion Fintech",
-                title = "Chief Security Officer",
-                status = "QUALIFIED",
-                score = 92,
-                website = "https://orionfintech.jp",
-                notes = "Evaluating enterprise security controls and encrypted credential wallets. Multi-tenant isolation is critical.",
-                enrichedIndustry = "Financial Tech & Security",
-                enrichedSize = "Enterprise (1,200+)",
-                enrichedPainPoints = "• Strict Japanese financial regulatory compliance\n• Complex self-managed HSM logs\n• Multi-region key leaks",
-                enrichedPitch = "Orion Fintech can gain isolated cold-storage enclaves with hardware verification keys meeting FIPS 140-3 regulations natively.",
-                enrichedIcebreaker = "Takahiro-san, congratulations on Orion's F-Type banking audit clearance. Outstanding achievement!"
-            ),
-            Lead(
-                name = "Sarah Jenkins",
-                email = "sarah.j@greenhousemedia.co",
-                phone = "+1 (555) 432-1098",
-                company = "Greenhouse Media",
-                title = "Founder & CEO",
-                status = "PROPOSAL_SENT",
-                score = 45,
-                website = "https://greenhousemedia.co",
-                notes = "Content studio eager to automate long-video highlight generation for Instagram Reels and YouTube Shorts.",
-                enrichedIndustry = "Digital Media Production",
-                enrichedSize = "Boutique/Startup (10-30)",
-                enrichedPainPoints = "• High manual editor wages\n• Slow turnaround time for short-form clips\n• No structured engagement scores",
-                enrichedPitch = "We can help Greenhouse elevate throughput by 10x with auto-frame face-tracking summarizers.",
-                enrichedIcebreaker = "Sarah, checked out Greenhouse's latest short doc on sustainability—visually spectacular project!"
-            )
-        )
+        val samples = mutableListOf<Lead>()
+        try {
+            val inputStream = getApplication<Application>().assets.open("rolling_stones_fans.txt")
+            val reader = inputStream.bufferedReader()
+            val lines = reader.readLines()
+            var currentCategory = "Entertainment / Business / Sports"
+            for ((index, name) in lines.withIndex()) {
+                val trimmedName = name.trim()
+                if (trimmedName.isBlank()) continue
+                
+                // If it looks like a header, update the category and skip
+                if (trimmedName.contains("Icons") || trimmedName.contains("Actors") || 
+                    trimmedName.contains("Personalities") || trimmedName.contains("Leaders") || 
+                    trimmedName.contains("Culinary") || trimmedName.contains("Fine Art") || 
+                    trimmedName.contains("Literature") || trimmedName.contains("Politics") || 
+                    trimmedName.contains("Aerospace") || trimmedName.contains("Wall Street") || 
+                    trimmedName.contains("Executives") || trimmedName.contains("Stage") || 
+                    trimmedName.contains("Fashion") || trimmedName.contains("Real Estate") || 
+                    trimmedName.contains("Songwriting") || trimmedName.contains("Beverage") || 
+                    trimmedName.contains("Automotive") || trimmedName.contains("E-Commerce") || 
+                    trimmedName.contains("Advertising")
+                ) {
+                    currentCategory = trimmedName
+                    continue
+                }
+
+                val painPoints = when {
+                    currentCategory.contains("Music") || currentCategory.contains("Songwriting") -> "Needs secure backstage access management, tour logistics efficiency."
+                    currentCategory.contains("Hollywood") || currentCategory.contains("Television") -> "Requires high-privacy scheduling, secure script distribution."
+                    currentCategory.contains("Sports") -> "Seeking brand deals management, off-season travel arrangements."
+                    currentCategory.contains("Politics") || currentCategory.contains("Statecraft") -> "Needs secure communication channels, donor tracking."
+                    currentCategory.contains("Business") || currentCategory.contains("Tech") || currentCategory.contains("Venture Capital") -> "Looking for scalable enterprise solutions, executive networking."
+                    currentCategory.contains("Culinary") -> "Requires scalable supply chain management, premium reservations handling."
+                    currentCategory.contains("Automotive") -> "Needs global shipping logistics, high-net-worth client tracking."
+                    currentCategory.contains("Real Estate") -> "Needs VIP property showings, secure document workflows."
+                    currentCategory.contains("Finance") || currentCategory.contains("Wall Street") -> "Looking for compliant, encrypted communication tools."
+                    else -> "Needs reliable event ticketing and VIP concierge services."
+                }
+
+                val pitch = when {
+                    currentCategory.contains("Music") || currentCategory.contains("Songwriting") -> "We provide end-to-end tour management software used by top-tier acts."
+                    currentCategory.contains("Hollywood") || currentCategory.contains("Television") -> "Our encrypted collaboration suite keeps your projects leak-proof."
+                    currentCategory.contains("Sports") -> "Our brand management platform maximizes ROI on your sponsorships."
+                    currentCategory.contains("Politics") || currentCategory.contains("Statecraft") -> "A secure CRM to manage constituents and donors effortlessly."
+                    currentCategory.contains("Business") || currentCategory.contains("Tech") || currentCategory.contains("Venture Capital") -> "Executive relationship management designed for scale."
+                    currentCategory.contains("Culinary") -> "Streamline your reservations and supplier relations in one dashboard."
+                    currentCategory.contains("Automotive") -> "Manage custom builds and global tracking securely."
+                    currentCategory.contains("Real Estate") -> "The ultimate CRM for ultra-luxury property management."
+                    currentCategory.contains("Finance") || currentCategory.contains("Wall Street") -> "A FinTech-ready CRM with end-to-end encryption and compliance."
+                    else -> "Premium concierge software tailored to your specific needs."
+                }
+
+                // Create a generic lead out of the fan
+                samples.add(
+                    Lead(
+                        name = trimmedName,
+                        email = "${trimmedName.replace(" ", ".").lowercase().replace(Regex("[^a-z.]"), "")}@rollingstonesfan.com",
+                        phone = "+1 (555) ${index.toString().padStart(4, '0')}",
+                        company = currentCategory.take(30),
+                        title = "Devoted Fan / VIP",
+                        status = if (index % 5 == 0) "QUALIFIED" else if (index % 3 == 0) "CONTACTED" else "NEW",
+                        score = (50..100).random(),
+                        website = "https://${trimmedName.replace(" ", "").lowercase().replace(Regex("[^a-z]"), "")}.com",
+                        notes = "Mega-famous Rolling Stones fan identified from the 1000-fan roster.",
+                        enrichedIndustry = currentCategory,
+                        enrichedSize = "VIP Individual / Enterprise",
+                        enrichedPainPoints = painPoints,
+                        enrichedPitch = pitch,
+                        enrichedIcebreaker = "Hey $trimmedName, saw you at the last Stones tour! Let's connect."
+                    )
+                )
+            }
+            reader.close()
+            inputStream.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Insert all parsed leads
         for (item in samples) {
             repository.insertLead(item)
         }

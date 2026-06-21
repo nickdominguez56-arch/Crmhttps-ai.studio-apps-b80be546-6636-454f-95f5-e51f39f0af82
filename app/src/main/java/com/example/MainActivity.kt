@@ -1160,6 +1160,7 @@ fun LeadDetailsDialog(
     val isEnriching by viewModel.isEnriching.collectAsStateWithLifecycle()
     val isGeneratingEmail by viewModel.isGeneratingEmail.collectAsStateWithLifecycle()
     val generatedEmail by viewModel.generatedEmail.collectAsStateWithLifecycle()
+    val allTemplates by viewModel.allTemplates.collectAsStateWithLifecycle()
 
     var detailTabState by remember { mutableIntStateOf(0) } // 0: Profile, 1: AI Insights, 2: Outreach Draft
 
@@ -1674,6 +1675,50 @@ fun LeadDetailsDialog(
                                                 Icon(imageVector = Icons.Default.Email, contentDescription = null, tint = CharcoalBase)
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text("Draft Outreach Template with AI", color = CharcoalBase, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Reusable Templates Module
+                            Text(text = "REUSABLE PITCH TEMPLATES", fontSize = 10.sp, color = PremiumMint, fontWeight = FontWeight.Bold)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = SlateCardBg),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (allTemplates.isEmpty()) {
+                                        Text("No templates available.", color = CoolGreyText, fontSize = 12.sp)
+                                    } else {
+                                        allTemplates.forEach { template ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(SlateDarkBg)
+                                                    .clickable {
+                                                        val body = template.bodyContent
+                                                            .replace("[Name]", lead.name)
+                                                            .replace("[Band_Name]", "The Rolling Stones")
+                                                            .replace("[Brand_Name]", lead.company.ifEmpty { "your company" })
+                                                        val subject = template.subjectLine
+                                                            .replace("[Name]", lead.name)
+                                                            .replace("[Band_Name]", "The Rolling Stones")
+                                                            .replace("[Brand_Name]", lead.company.ifEmpty { "your company" })
+                                                        
+                                                        viewModel.setGeneratedEmail("SUBJECT: $subject\n\n$body")
+                                                    }
+                                                    .padding(12.dp)
+                                            ) {
+                                                Column {
+                                                    Text(text = template.name, color = Offwhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                    Text(text = "Persona: ${template.persona}", color = PremiumMint, fontSize = 11.sp, maxLines = 1)
+                                                    Text(text = "Angle: ${template.angle}", color = CoolGreyText, fontSize = 11.sp, maxLines = 1)
+                                                }
                                             }
                                         }
                                     }
@@ -2272,9 +2317,9 @@ fun MatrixRowItem(lead: Lead) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = lead.name, color = Offwhite, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
-        Text(text = lead.enrichedIndustry.ifEmpty { "N/A" }, color = CoolGreyText, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
-        Text(text = lead.enrichedSize.ifEmpty { "Unknown" }, color = CoolGreyText, fontSize = 12.sp, modifier = Modifier.weight(1.5f))
+        Text(text = lead.name, color = Offwhite, fontSize = 12.sp, modifier = Modifier.weight(1.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text = lead.enrichedIndustry.ifEmpty { "N/A" }, color = CoolGreyText, fontSize = 12.sp, modifier = Modifier.weight(1.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text = lead.enrichedSize.ifEmpty { "Unknown" }, color = CoolGreyText, fontSize = 12.sp, modifier = Modifier.weight(1.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
@@ -2286,9 +2331,10 @@ fun MatrixRowItem(lead: Lead) {
                     Text("Score based on Lead Valuation and Activity", fontSize = 11.sp)
                 }
             },
-            state = rememberTooltipState()
+            state = rememberTooltipState(),
+            modifier = Modifier.weight(1f)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 val scoreColor = when {
                     lead.score >= 80 -> EmeralPrimary
                     lead.score >= 50 -> Color(0xFFFBBF24)
