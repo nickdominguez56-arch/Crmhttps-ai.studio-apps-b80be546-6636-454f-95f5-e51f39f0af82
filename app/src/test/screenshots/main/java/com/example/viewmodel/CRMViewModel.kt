@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.AISearchResult
-import com.example.data.api.ContactBookEnrichmentResult
 import com.example.data.api.EnrichedData
 import com.example.data.api.GeminiClient
 import com.example.data.db.AppDatabase
@@ -56,12 +55,6 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
     // AI Action States
     private val _isEnriching = MutableStateFlow(false)
     val isEnriching: StateFlow<Boolean> = _isEnriching.asStateFlow()
-
-    private val _isFormEnriching = MutableStateFlow(false)
-    val isFormEnriching: StateFlow<Boolean> = _isFormEnriching.asStateFlow()
-
-    private val _formEnrichmentResult = MutableStateFlow<ContactBookEnrichmentResult?>(null)
-    val formEnrichmentResult: StateFlow<ContactBookEnrichmentResult?> = _formEnrichmentResult.asStateFlow()
 
     private val _isGeneratingEmail = MutableStateFlow(false)
     val isGeneratingEmail: StateFlow<Boolean> = _isGeneratingEmail.asStateFlow()
@@ -392,82 +385,6 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
         }
         _selectedLead.value = updated
         _alertMessage.value = "Using high-fidelity mockup enrichment (Configure GEMINI_API_KEY in the Secrets panel to activate live AI)"
-    }
-
-    /**
-     * Trigger Contact Book Enrichment for new partial details
-     */
-    fun runContactBookEnrichment(
-        company: String,
-        website: String,
-        linkedin: String,
-        contactName: String
-    ) {
-        viewModelScope.launch {
-            _isFormEnriching.value = true
-            _formEnrichmentResult.value = null
-            
-            val result = if (GeminiClient.isApiKeyValid()) {
-                withContext(Dispatchers.IO) {
-                    GeminiClient.analyzeContactBookEnrichment(
-                        company = company,
-                        website = website,
-                        linkedin = linkedin,
-                        contactName = contactName
-                    )
-                }
-            } else {
-                kotlinx.coroutines.delay(1500) // Simulated network latency
-                GeminiClient.getMockEnrichmentResult(
-                    company = company,
-                    website = website,
-                    linkedin = linkedin,
-                    contactName = contactName
-                )
-            }
-
-            if (result != null) {
-                _formEnrichmentResult.value = result
-                
-                // Automatically create and insert a new lead in the database
-                val finalName = result.extrapolatedName.ifEmpty { contactName.ifEmpty { "Enriched Contact" } }
-                val newLead = Lead(
-                    name = finalName,
-                    email = result.extrapolatedEmail.ifEmpty { "info@${company.lowercase().replace(" ", "")}.com" },
-                    phone = "",
-                    company = company,
-                    title = result.outreachPersonas.firstOrNull()?.title ?: "Executive Target",
-                    status = "NEW",
-                    score = result.lookalikeCompanies.firstOrNull()?.fitScore ?: 75,
-                    website = website,
-                    linkedin = linkedin,
-                    notes = "Contact Book Enrichment triggered.",
-                    enrichedIndustry = result.industry,
-                    enrichedSize = result.companySize,
-                    enrichedPainPoints = result.potentialPainPoints,
-                    enrichedPitch = result.tailoredValuePitch,
-                    enrichedIcebreaker = result.recommendedIcebreaker
-                )
-                
-                withContext(Dispatchers.IO) {
-                    repository.insertLead(newLead)
-                }
-                
-                if (!GeminiClient.isApiKeyValid()) {
-                    _alertMessage.value = "Using mock contact enrichment (Insert GEMINI_API_KEY in Secrets to activate live API!)"
-                } else {
-                    _alertMessage.value = "Lead enriched successfully and added to Contact Book!"
-                }
-            } else {
-                _alertMessage.value = "Enrichment failed. Please verify your connection."
-            }
-            
-            _isFormEnriching.value = false
-        }
-    }
-
-    fun clearFormEnrichmentResult() {
-        _formEnrichmentResult.value = null
     }
 
     /**
