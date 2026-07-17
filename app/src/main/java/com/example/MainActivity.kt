@@ -175,7 +175,6 @@ fun CRMMainApp() {
                     onLeadClick = { viewModel.selectLead(it) }
                 )
                 2 -> DataEnrichmentMatrix(
-                    viewModel = viewModel,
                     leads = leads
                 )
                 3 -> AnalyticsDashboard(
@@ -196,7 +195,7 @@ fun CRMMainApp() {
             if (showAddDialog) {
                 AddLeadDialog(
                     onDismiss = { showAddDialog = false },
-                    onSave = { name, email, phone, company, title, status, score, website, notes ->
+                    onSave = { name, email, phone, company, title, status, emailOpens, websiteVisits, customScore, website, notes ->
                         viewModel.insertLead(
                             name = name,
                             email = email,
@@ -204,9 +203,11 @@ fun CRMMainApp() {
                             company = company,
                             title = title,
                             status = status,
-                            score = score,
                             website = website,
-                            notes = notes
+                            notes = notes,
+                            emailOpens = emailOpens,
+                            websiteVisits = websiteVisits,
+                            customFieldScore = customScore
                         )
                         showAddDialog = false
                     }
@@ -877,7 +878,7 @@ fun LeadCardItem(lead: Lead, onClick: () -> Unit) {
                             .clip(RoundedCornerShape(3.dp))
                     )
                     Text(
-                        text = "Score ${lead.score}",
+                        text = "Score ${lead.score} (${lead.scoreCategory})",
                         fontSize = 10.sp,
                         color = scoreColor,
                         fontWeight = FontWeight.Bold
@@ -1228,7 +1229,9 @@ fun LeadDetailsDialog(
     var editCompany by remember { mutableStateOf(lead.company) }
     var editTitle by remember { mutableStateOf(lead.title) }
     var editStatus by remember { mutableStateOf(lead.status) }
-    var editScore by remember { mutableStateOf(lead.score) }
+    var editEmailOpens by remember { mutableIntStateOf(lead.emailOpens) }
+    var editWebsiteVisits by remember { mutableIntStateOf(lead.websiteVisits) }
+    var editCustomScore by remember { mutableIntStateOf(lead.customFieldScore) }
     var editNotes by remember { mutableStateOf(lead.notes) }
 
     // Email generator settings
@@ -1284,7 +1287,9 @@ fun LeadDetailsDialog(
                                         company = editCompany,
                                         title = editTitle,
                                         status = editStatus,
-                                        score = editScore,
+                                        emailOpens = editEmailOpens,
+                                        websiteVisits = editWebsiteVisits,
+                                        customFieldScore = editCustomScore,
                                         notes = editNotes
                                     )
                                 )
@@ -1432,15 +1437,49 @@ fun LeadDetailsDialog(
                                 }
 
                                 Text(
-                                    text = "Lead Score: $editScore",
+                                    text = "Email Opens: $editEmailOpens",
                                     fontSize = 12.sp,
                                     color = Offwhite,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Slider(
-                                    value = editScore.toFloat(),
-                                    onValueChange = { editScore = it.toInt() },
-                                    valueRange = 0f..100f,
+                                    value = editEmailOpens.toFloat(),
+                                    onValueChange = { editEmailOpens = it.toInt() },
+                                    valueRange = 0f..20f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = EmeralPrimary,
+                                        activeTrackColor = EmeralPrimary,
+                                        inactiveTrackColor = SlateCardBg
+                                    )
+                                )
+
+                                Text(
+                                    text = "Website Visits: $editWebsiteVisits",
+                                    fontSize = 12.sp,
+                                    color = Offwhite,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Slider(
+                                    value = editWebsiteVisits.toFloat(),
+                                    onValueChange = { editWebsiteVisits = it.toInt() },
+                                    valueRange = 0f..20f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = EmeralPrimary,
+                                        activeTrackColor = EmeralPrimary,
+                                        inactiveTrackColor = SlateCardBg
+                                    )
+                                )
+
+                                Text(
+                                    text = "Custom Field Weight: $editCustomScore",
+                                    fontSize = 12.sp,
+                                    color = Offwhite,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Slider(
+                                    value = editCustomScore.toFloat(),
+                                    onValueChange = { editCustomScore = it.toInt() },
+                                    valueRange = 0f..50f,
                                     colors = SliderDefaults.colors(
                                         thumbColor = EmeralPrimary,
                                         activeTrackColor = EmeralPrimary,
@@ -1494,7 +1533,9 @@ fun LeadDetailsDialog(
                                                 company = editCompany,
                                                 title = editTitle,
                                                 status = editStatus,
-                                                score = editScore,
+                                                emailOpens = editEmailOpens,
+                                                websiteVisits = editWebsiteVisits,
+                                                customFieldScore = editCustomScore,
                                                 notes = editNotes
                                             )
                                         )
@@ -1524,7 +1565,7 @@ fun LeadDetailsDialog(
                                         }
                                         Column {
                                             Text(text = "COMMERCIAL FOOTPRINT ECOSYSTEM", color = CoolGreyText, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                                            Text(text = "Score Target Rating: ${lead.score}/100", color = EmeralPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(text = "Score: ${lead.score}/100 (${lead.scoreCategory})", color = EmeralPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 }
@@ -1945,7 +1986,7 @@ fun AIInsightCard(title: String, info: String, icon: ImageVector) {
 @Composable
 fun AddLeadDialog(
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String, String, Int, String, String) -> Unit
+    onSave: (String, String, String, String, String, String, Int, Int, Int, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -1953,7 +1994,9 @@ fun AddLeadDialog(
     var company by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("NEW") }
-    var score by remember { mutableIntStateOf(50) }
+    var emailOpens by remember { mutableIntStateOf(0) }
+    var websiteVisits by remember { mutableIntStateOf(0) }
+    var customFieldScore by remember { mutableIntStateOf(0) }
     var website by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
@@ -2055,17 +2098,54 @@ fun AddLeadDialog(
                 }
 
                 // Lead Score rating
+                // Engagement tracking sliders
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(text = "Interest Rating Score", fontSize = 11.sp, color = CoolGreyText, fontWeight = FontWeight.Bold)
-                    Text(text = "$score%", fontSize = 11.sp, color = EmeralPrimary, fontWeight = FontWeight.Bold)
+                    Text(text = "Email Opens", fontSize = 11.sp, color = CoolGreyText, fontWeight = FontWeight.Bold)
+                    Text(text = "$emailOpens", fontSize = 11.sp, color = EmeralPrimary, fontWeight = FontWeight.Bold)
                 }
                 Slider(
-                    value = score.toFloat(),
-                    onValueChange = { score = it.toInt() },
-                    valueRange = 0f..100f,
+                    value = emailOpens.toFloat(),
+                    onValueChange = { emailOpens = it.toInt() },
+                    valueRange = 0f..20f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = EmeralPrimary,
+                        activeTrackColor = EmeralPrimary,
+                        inactiveTrackColor = SlateCardBg
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = "Website Visits", fontSize = 11.sp, color = CoolGreyText, fontWeight = FontWeight.Bold)
+                    Text(text = "$websiteVisits", fontSize = 11.sp, color = EmeralPrimary, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = websiteVisits.toFloat(),
+                    onValueChange = { websiteVisits = it.toInt() },
+                    valueRange = 0f..20f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = EmeralPrimary,
+                        activeTrackColor = EmeralPrimary,
+                        inactiveTrackColor = SlateCardBg
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = "Custom Score Adjuster", fontSize = 11.sp, color = CoolGreyText, fontWeight = FontWeight.Bold)
+                    Text(text = "$customFieldScore pts", fontSize = 11.sp, color = EmeralPrimary, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = customFieldScore.toFloat(),
+                    onValueChange = { customFieldScore = it.toInt() },
+                    valueRange = 0f..50f,
                     colors = SliderDefaults.colors(
                         thumbColor = EmeralPrimary,
                         activeTrackColor = EmeralPrimary,
@@ -2099,7 +2179,7 @@ fun AddLeadDialog(
                     Button(
                         onClick = {
                             if (name.trim().isNotEmpty() && email.trim().isNotEmpty()) {
-                                onSave(name, email, phone, company, title, status, score, website, notes)
+                                onSave(name, email, phone, company, title, status, emailOpens, websiteVisits, customFieldScore, website, notes)
                             }
                         },
                         enabled = name.trim().isNotEmpty() && email.trim().isNotEmpty(),
@@ -2317,7 +2397,7 @@ fun AIChatAssistantDialog(
 // --- TAB 3: Data Enrichment Matrix ---
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun DataEnrichmentMatrix(viewModel: CRMViewModel, leads: List<Lead>) {
+fun DataEnrichmentMatrix(leads: List<Lead>) {
     var sortColumn by remember { mutableStateOf("Name") }
     var sortAscending by remember { mutableStateOf(true) }
 
@@ -2380,9 +2460,6 @@ fun DataEnrichmentMatrix(viewModel: CRMViewModel, leads: List<Lead>) {
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item {
-                ContactEnrichmentForm(viewModel = viewModel)
-            }
             items(sortedLeads, key = { it.id }) { lead ->
                 MatrixRowItem(lead = lead)
             }
@@ -2515,428 +2592,6 @@ fun VerticalStatsRow(vertical: String, count: Int, total: Int) {
         Spacer(modifier = Modifier.height(8.dp))
         Box(modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(SlateDarkBg)) {
             Box(modifier = Modifier.fillMaxWidth(percentage).fillMaxHeight().background(EmeralPrimary))
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ContactEnrichmentForm(viewModel: CRMViewModel) {
-    var company by remember { mutableStateOf("") }
-    var website by remember { mutableStateOf("") }
-    var linkedin by remember { mutableStateOf("") }
-    var contactName by remember { mutableStateOf("") }
-
-    val isEnriching by viewModel.isFormEnriching.collectAsStateWithLifecycle()
-    val enrichmentResult by viewModel.formEnrichmentResult.collectAsStateWithLifecycle()
-
-    var showForm by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp)
-            .testTag("contact_enrichment_card"),
-        colors = CardDefaults.cardColors(containerColor = SlateCardBg),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = "Enrichment",
-                        tint = EmeralPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Contact Book Enrichment",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Offwhite
-                    )
-                }
-                
-                TextButton(
-                    onClick = { showForm = !showForm },
-                    modifier = Modifier.testTag("toggle_enrichment_form_button")
-                ) {
-                    Text(
-                        text = if (showForm) "Hide Form" else "Enrich New",
-                        color = EmeralPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            AnimatedVisibility(visible = showForm) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Analyze partial contact details. Gemini will extrapolate missing metadata, find lookalike companies, and identify influential targets.",
-                        fontSize = 12.sp,
-                        color = CoolGreyText
-                    )
-
-                    OutlinedTextField(
-                        value = company,
-                        onValueChange = { company = it },
-                        label = { Text("Company Name *", fontSize = 12.sp) },
-                        placeholder = { Text("e.g., Acme Corp", fontSize = 12.sp) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("enrichment_company_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeralPrimary,
-                            unfocusedBorderColor = CoolGreyText.copy(alpha = 0.5f),
-                            focusedLabelColor = EmeralPrimary,
-                            unfocusedLabelColor = CoolGreyText,
-                            cursorColor = EmeralPrimary,
-                            focusedTextColor = Offwhite,
-                            unfocusedTextColor = Offwhite
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = website,
-                        onValueChange = { website = it },
-                        label = { Text("Website URL (Optional)", fontSize = 12.sp) },
-                        placeholder = { Text("e.g., acme-corp.com", fontSize = 12.sp) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("enrichment_website_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeralPrimary,
-                            unfocusedBorderColor = CoolGreyText.copy(alpha = 0.5f),
-                            focusedLabelColor = EmeralPrimary,
-                            unfocusedLabelColor = CoolGreyText,
-                            cursorColor = EmeralPrimary,
-                            focusedTextColor = Offwhite,
-                            unfocusedTextColor = Offwhite
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = linkedin,
-                        onValueChange = { linkedin = it },
-                        label = { Text("LinkedIn URL (Optional)", fontSize = 12.sp) },
-                        placeholder = { Text("e.g., linkedin.com/company/acme", fontSize = 12.sp) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("enrichment_linkedin_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeralPrimary,
-                            unfocusedBorderColor = CoolGreyText.copy(alpha = 0.5f),
-                            focusedLabelColor = EmeralPrimary,
-                            unfocusedLabelColor = CoolGreyText,
-                            cursorColor = EmeralPrimary,
-                            focusedTextColor = Offwhite,
-                            unfocusedTextColor = Offwhite
-                        )
-                    )
-
-                    OutlinedTextField(
-                        value = contactName,
-                        onValueChange = { contactName = it },
-                        label = { Text("Contact Name (Optional)", fontSize = 12.sp) },
-                        placeholder = { Text("e.g., Alex Rivera", fontSize = 12.sp) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("enrichment_contact_name_input"),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeralPrimary,
-                            unfocusedBorderColor = CoolGreyText.copy(alpha = 0.5f),
-                            focusedLabelColor = EmeralPrimary,
-                            unfocusedLabelColor = CoolGreyText,
-                            cursorColor = EmeralPrimary,
-                            focusedTextColor = Offwhite,
-                            unfocusedTextColor = Offwhite
-                        )
-                    )
-
-                    Button(
-                        onClick = {
-                            if (company.isNotBlank()) {
-                                viewModel.runContactBookEnrichment(
-                                    company = company,
-                                    website = website,
-                                    linkedin = linkedin,
-                                    contactName = contactName
-                                )
-                            }
-                        },
-                        enabled = company.isNotBlank() && !isEnriching,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("trigger_enrichment_button"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = EmeralPrimary,
-                            contentColor = SlateDarkBg,
-                            disabledContainerColor = CoolGreyText.copy(alpha = 0.3f),
-                            disabledContentColor = CoolGreyText
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        if (isEnriching) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = SlateDarkBg,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Enriching Profile...", fontWeight = FontWeight.Bold)
-                        } else {
-                            Text("Analyze & Enrich Contact", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            // Results Section
-            if (isEnriching) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(color = EmeralPrimary)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Running deep B2B enrichment loops...",
-                        color = CoolGreyText,
-                        fontSize = 13.sp,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                    )
-                }
-            }
-
-            enrichmentResult?.let { result ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                        .testTag("enrichment_results_container"),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HorizontalDivider(color = CoolGreyText.copy(alpha = 0.2f))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Enrichment Analysis Report",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = EmeralPrimary
-                        )
-                        IconButton(
-                            onClick = { viewModel.clearFormEnrichmentResult() },
-                            modifier = Modifier.size(24.dp).testTag("clear_enrichment_result_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear Result",
-                                tint = CoolGreyText,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    // Module 1: Data Enrichment Matrix
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = SlateDarkBg),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "1. Data Enrichment Matrix",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Offwhite,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            
-                            val dataPoints = listOf(
-                                Triple("Industry", result.industry, "92%"),
-                                Triple("Company Size", result.companySize, "85%"),
-                                Triple("Potential Pain Points", result.potentialPainPoints, "88%"),
-                                Triple("Tailored Pitch", result.tailoredValuePitch, "90%"),
-                                Triple("Key Icebreaker", result.recommendedIcebreaker, "95%"),
-                                Triple("Extrapolated Name", result.extrapolatedName, "100%"),
-                                Triple("Extrapolated Email", result.extrapolatedEmail, "90%")
-                            )
-
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                dataPoints.forEach { (label, value, confidence) ->
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(SlateCardBg.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                                            .padding(8.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(text = label, fontWeight = FontWeight.Bold, color = CoolGreyText, fontSize = 11.sp)
-                                            Text(text = "Confidence: $confidence", color = EmeralPrimary, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(text = value, color = Offwhite, fontSize = 12.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Module 2: Lookalike Target Profiles
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = SlateDarkBg),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "2. Lookalike Target Profiles (Discovery)",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Offwhite,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                result.lookalikeCompanies.forEach { lookalike ->
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .border(1.dp, CoolGreyText.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                                            .padding(10.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = lookalike.name,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Offwhite,
-                                                fontSize = 13.sp,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(EmeralPrimary.copy(alpha = 0.1f))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = "${lookalike.fitScore}/100 Fit",
-                                                    color = EmeralPrimary,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Niche: ${lookalike.niche}",
-                                            fontSize = 11.sp,
-                                            color = CoolGreyText,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = lookalike.icpFitAnalysis,
-                                            fontSize = 11.sp,
-                                            color = Offwhite
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Module 3: High-Value Outreach Matrix
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = SlateDarkBg),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "3. High-Value Outreach Matrix",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Offwhite,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                result.outreachPersonas.forEach { persona ->
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .border(1.dp, CoolGreyText.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                                            .padding(10.dp)
-                                    ) {
-                                        Text(
-                                            text = "Target Persona: ${persona.title}",
-                                            fontWeight = FontWeight.Bold,
-                                            color = EmeralPrimary,
-                                            fontSize = 12.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "Outreach Angle:",
-                                            fontWeight = FontWeight.Bold,
-                                            color = CoolGreyText,
-                                            fontSize = 10.sp
-                                        )
-                                        Text(
-                                            text = persona.outreachAngle,
-                                            color = Offwhite,
-                                            fontSize = 11.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "Value Proposition:",
-                                            fontWeight = FontWeight.Bold,
-                                            color = CoolGreyText,
-                                            fontSize = 10.sp
-                                        )
-                                        Text(
-                                            text = persona.valueProposition,
-                                            color = Offwhite,
-                                            fontSize = 11.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

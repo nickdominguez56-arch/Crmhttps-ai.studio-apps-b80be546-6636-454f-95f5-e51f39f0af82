@@ -24,5 +24,17 @@ data class Lead(
     val enrichedPitch: String = "",
     val enrichedIcebreaker: String = "",
     
+    // Engagement Metrics
+    val emailOpens: Int = 0,
+    val websiteVisits: Int = 0,
+    val customFieldScore: Int = 0, // custom weighting added by users
+    
     val lastContacted: Long = System.currentTimeMillis()
-)
+) {
+    val scoreCategory: String
+        get() = when {
+            score >= 80 -> "Hot"
+            score >= 50 -> "Warm"
+            else -> "Cold"
+        }
+}

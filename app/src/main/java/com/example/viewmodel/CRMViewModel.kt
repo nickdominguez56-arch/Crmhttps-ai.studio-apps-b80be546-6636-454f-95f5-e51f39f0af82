@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.AISearchResult
-import com.example.data.api.ContactBookEnrichmentResult
 import com.example.data.api.EnrichedData
 import com.example.data.api.GeminiClient
 import com.example.data.db.AppDatabase
@@ -56,12 +55,6 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
     // AI Action States
     private val _isEnriching = MutableStateFlow(false)
     val isEnriching: StateFlow<Boolean> = _isEnriching.asStateFlow()
-
-    private val _isFormEnriching = MutableStateFlow(false)
-    val isFormEnriching: StateFlow<Boolean> = _isFormEnriching.asStateFlow()
-
-    private val _formEnrichmentResult = MutableStateFlow<ContactBookEnrichmentResult?>(null)
-    val formEnrichmentResult: StateFlow<ContactBookEnrichmentResult?> = _formEnrichmentResult.asStateFlow()
 
     private val _isGeneratingEmail = MutableStateFlow(false)
     val isGeneratingEmail: StateFlow<Boolean> = _isGeneratingEmail.asStateFlow()
@@ -276,6 +269,36 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Action Methods ---
 
+    private fun calculateLeadScore(lead: Lead): Int {
+        var computedScore = 0
+
+        val ind = lead.enrichedIndustry.lowercase()
+        if (ind.contains("tech") || ind.contains("software") || ind.contains("finance") || ind.contains("business")) {
+            computedScore += 25
+        } else if (ind.isNotBlank()) {
+            computedScore += 15
+        }
+
+        val size = lead.enrichedSize.lowercase()
+        if (size.contains("enterprise") || size.contains("global") || size.contains("1000") || size.contains("vip")) {
+            computedScore += 30
+        } else if (size.contains("mid") || size.contains("100") || size.contains("500")) {
+            computedScore += 20
+        } else if (size.isNotBlank()) {
+            computedScore += 10
+        }
+
+        computedScore += (lead.emailOpens * 10)
+        computedScore += (lead.websiteVisits * 5)
+        computedScore += lead.customFieldScore
+
+        if (lead.status == "QUALIFIED") computedScore += 15
+        if (lead.status == "PROPOSAL_SENT") computedScore += 25
+        if (lead.status == "WON") computedScore = 100
+
+        return computedScore.coerceIn(0, 100)
+    }
+
     fun insertLead(
         name: String,
         email: String,
@@ -283,36 +306,44 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
         company: String,
         title: String,
         status: String,
-        score: Int,
         website: String,
-        notes: String
+        notes: String,
+        emailOpens: Int = 0,
+        websiteVisits: Int = 0,
+        customFieldScore: Int = 0
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val newLead = Lead(
+            val initialLead = Lead(
                 name = name,
                 email = email,
                 phone = phone,
                 company = company,
                 title = title,
                 status = status,
-                score = score,
+                score = 0,
                 website = website,
-                notes = notes
+                notes = notes,
+                emailOpens = emailOpens,
+                websiteVisits = websiteVisits,
+                customFieldScore = customFieldScore
             )
-            val id = repository.insertLead(newLead)
+            val autoScoredLead = initialLead.copy(score = calculateLeadScore(initialLead))
+            val id = repository.insertLead(autoScoredLead)
             
             // Auto enrich if key is valid
             if (GeminiClient.isApiKeyValid()) {
-                enrichLeadLocally(newLead.copy(id = id.toInt()))
+                enrichLeadLocally(autoScoredLead.copy(id = id.toInt()))
             }
         }
     }
 
     fun updateLead(lead: Lead) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updateLead(lead)
+            val updatedScore = calculateLeadScore(lead)
+            val scoredLead = lead.copy(score = updatedScore)
+            repository.updateLead(scoredLead)
             if (_selectedLead.value?.id == lead.id) {
-                _selectedLead.value = lead
+                _selectedLead.value = scoredLead
             }
         }
     }
@@ -354,18 +385,19 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         if (enriched != null) {
-            val updated = lead.copy(
+            val partiallyUpdated = lead.copy(
                 enrichedIndustry = enriched.industry,
                 enrichedSize = enriched.companySize,
                 enrichedPainPoints = enriched.potentialPainPoints,
                 enrichedPitch = enriched.tailoredValuePitch,
                 enrichedIcebreaker = enriched.recommendedIcebreaker
             )
+            val finalUpdated = partiallyUpdated.copy(score = calculateLeadScore(partiallyUpdated))
             withContext(Dispatchers.IO) {
-                repository.updateLead(updated)
+                repository.updateLead(finalUpdated)
             }
             if (_selectedLead.value?.id == lead.id) {
-                _selectedLead.value = updated
+                _selectedLead.value = finalUpdated
             }
             return true
         }
@@ -380,94 +412,19 @@ class CRMViewModel(application: Application) : AndroidViewModel(application) {
         val pitch = "Your company, ${lead.company}, can optimize conversion rates by 22% using automated pipeline routers."
         val icebreaker = "Hi ${lead.name}, watched your team's panel discussion on CRM analytics last month—stellar work!"
 
-        val updated = lead.copy(
+        val partiallyUpdated = lead.copy(
             enrichedIndustry = industry,
             enrichedSize = size,
             enrichedPainPoints = painPoints,
             enrichedPitch = pitch,
             enrichedIcebreaker = icebreaker
         )
+        val finalUpdated = partiallyUpdated.copy(score = calculateLeadScore(partiallyUpdated))
         viewModelScope.launch(Dispatchers.IO) {
-            repository.updateLead(updated)
+            repository.updateLead(finalUpdated)
         }
-        _selectedLead.value = updated
+        _selectedLead.value = finalUpdated
         _alertMessage.value = "Using high-fidelity mockup enrichment (Configure GEMINI_API_KEY in the Secrets panel to activate live AI)"
-    }
-
-    /**
-     * Trigger Contact Book Enrichment for new partial details
-     */
-    fun runContactBookEnrichment(
-        company: String,
-        website: String,
-        linkedin: String,
-        contactName: String
-    ) {
-        viewModelScope.launch {
-            _isFormEnriching.value = true
-            _formEnrichmentResult.value = null
-            
-            val result = if (GeminiClient.isApiKeyValid()) {
-                withContext(Dispatchers.IO) {
-                    GeminiClient.analyzeContactBookEnrichment(
-                        company = company,
-                        website = website,
-                        linkedin = linkedin,
-                        contactName = contactName
-                    )
-                }
-            } else {
-                kotlinx.coroutines.delay(1500) // Simulated network latency
-                GeminiClient.getMockEnrichmentResult(
-                    company = company,
-                    website = website,
-                    linkedin = linkedin,
-                    contactName = contactName
-                )
-            }
-
-            if (result != null) {
-                _formEnrichmentResult.value = result
-                
-                // Automatically create and insert a new lead in the database
-                val finalName = result.extrapolatedName.ifEmpty { contactName.ifEmpty { "Enriched Contact" } }
-                val newLead = Lead(
-                    name = finalName,
-                    email = result.extrapolatedEmail.ifEmpty { "info@${company.lowercase().replace(" ", "")}.com" },
-                    phone = "",
-                    company = company,
-                    title = result.outreachPersonas.firstOrNull()?.title ?: "Executive Target",
-                    status = "NEW",
-                    score = result.lookalikeCompanies.firstOrNull()?.fitScore ?: 75,
-                    website = website,
-                    linkedin = linkedin,
-                    notes = "Contact Book Enrichment triggered.",
-                    enrichedIndustry = result.industry,
-                    enrichedSize = result.companySize,
-                    enrichedPainPoints = result.potentialPainPoints,
-                    enrichedPitch = result.tailoredValuePitch,
-                    enrichedIcebreaker = result.recommendedIcebreaker
-                )
-                
-                withContext(Dispatchers.IO) {
-                    repository.insertLead(newLead)
-                }
-                
-                if (!GeminiClient.isApiKeyValid()) {
-                    _alertMessage.value = "Using mock contact enrichment (Insert GEMINI_API_KEY in Secrets to activate live API!)"
-                } else {
-                    _alertMessage.value = "Lead enriched successfully and added to Contact Book!"
-                }
-            } else {
-                _alertMessage.value = "Enrichment failed. Please verify your connection."
-            }
-            
-            _isFormEnriching.value = false
-        }
-    }
-
-    fun clearFormEnrichmentResult() {
-        _formEnrichmentResult.value = null
     }
 
     /**
